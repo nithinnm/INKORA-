@@ -1,0 +1,33 @@
+# Isolated LOCAL development only. Hosted staging uses authenticated PostgreSQL and private GCS.
+name: inkora-pilot
+services:
+  db:
+    image: postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: inkora
+    ports:
+      - '127.0.0.1:5434:5432'
+    volumes:
+      - ./instance/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d inkora']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  web:
+    image: inkora:staging
+    environment:
+      INKORA_ENV: development
+      DATABASE_URL: postgresql+psycopg://postgres@db:5432/inkora
+      INKORA_SESSION_SECRET: ${INKORA_SESSION_SECRET:?Set a stable random session secret securely}
+      INKORA_ENCRYPTION_KEY: ${INKORA_ENCRYPTION_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:8086:8080'
+    volumes:
+      - local-files:/app/instance
+volumes:
+  local-files:

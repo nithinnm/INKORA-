@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<section class="panel login"><h1>Two-step verification</h1><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Authenticator code<input name="code" inputmode="numeric" pattern="[0-9]{6}" autocomplete="one-time-code" required></label><button>Verify</button></form></section>{% endblock %}
