@@ -2,6 +2,61 @@
 
 These commands use your Cloud Shell login, not a service-account key. Run each block in order in the same shell. Stop on an error. This deploys simulated printing, not paid production printing. Cloud SQL, storage, registry, jobs and Cloud Run can incur charges. The shared-core database below is a small pilot, without HA. Review its price and configure a billing budget before step 3; a budget alert does not cap spending.
 
+## Resume after the successful Cloud Build
+
+The staging image reported built and pushed successfully is:
+`asia-south1-docker.pkg.dev/inkora-510915/inkora/web@sha256:f1f85033dd99cb7c6096c970d4987c9f779aff45a72f0b6eb92a936095208cef`.
+Keep this immutable image. Skip step 2: do not rebuild or retry a local Docker push.
+
+The configured architecture is Cloud Run (1 CPU/1 GiB, concurrency 2, at most 3 instances), PostgreSQL through the authenticated Cloud SQL socket, a private GCS documents bucket, three Secret Manager bindings, a one-off migration job and scheduled maintenance. Admin MFA, owner isolation, kiosk/device credentials, per-kiosk prices, customer QR/PDF handling, immutable quotes, job leases/review and audit functionality remain in the application. SQLite and the trust-auth Compose database are local-only and must not be deployed. `INKORA_ENV=staging` keeps simulated printing available; production mode deliberately blocks it.
+
+Run this inventory before any resource creation. It does not inspect secret values. Resolve missing API/permission errors before interpreting inventory results.
+
+```bash
+gcloud config set project inkora-510915
+export PROJECT=inkora-510915 REGION=asia-south1 SERVICE=inkora-staging
+export IMAGE=asia-south1-docker.pkg.dev/inkora-510915/inkora/web@sha256:f1f85033dd99cb7c6096c970d4987c9f779aff45a72f0b6eb92a936095208cef
+export BUCKET=inkora-510915-staging-documents SQL_INSTANCE=inkora-staging-db
+export SA=inkora-staging@inkora-510915.iam.gserviceaccount.com
+test "$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')" = 433513064052
+gcloud billing projects describe "$PROJECT"
+gcloud artifacts docker images describe "$IMAGE"
+gcloud services list --enabled --project="$PROJECT"
+gcloud run services list --region="$REGION"
+gcloud run jobs list --region="$REGION"
+gcloud sql instances list
+gcloud storage buckets list --project="$PROJECT"
+gcloud secrets list
+gcloud iam service-accounts list
+```
+
+If `inkora-staging` already exists, also inspect its bindings and deployed revision. The commands below show metadata, not Secret Manager contents; do not share output if an older revision mistakenly contains inline secret values.
+
+```bash
+gcloud run services describe inkora-staging --region=asia-south1 --format='yaml(status.url,status.latestReadyRevisionName,spec.template.spec.serviceAccountName,spec.template.spec.containers,spec.template.metadata.annotations)'
+```
+
+### Budget gate before Cloud SQL
+
+In Console → Billing, select the billing account returned by `gcloud billing projects describe`, then Budgets & alerts → Create budget:
+
+1. Name: `INKORA staging monthly`.
+2. Scope: only project `inkora-510915`; include all services so Cloud Build, Artifact Registry, Cloud SQL, Cloud Run, storage, secrets and scheduling are covered.
+3. Period: monthly; amount: your agreed monthly staging budget, in the billing account's currency. Do not assume a ₹1,000 budget guarantees this architecture fits within ₹1,000.
+4. Actual-spend thresholds: 50%, 80%, 100%; add a 100% forecast threshold.
+5. Enable email notifications to billing administrators/users and your monitored notification channel where available. Confirm the recipient is monitored.
+6. Save, reopen and verify project scope, amount/currency, thresholds and notifications. Reuse an existing matching budget instead of creating a duplicate.
+
+Project Owner alone may not have permission to create billing-account budgets; request Billing Account Costs Manager access from the billing administrator if needed. Do not continue past this gate until the budget is saved. Alerts can arrive late and do not stop spending.
+
+Review Cloud SQL's Mumbai price estimate for the `db-f1-micro` pilot with 10 GB SSD, backups/PITR and networking before creating it. It bills continuously and is not highly available. If the estimate exceeds the intended budget, stop and choose a PostgreSQL provider/plan within budget; retain PostgreSQL transactions and existing features rather than substituting SQLite or removing functionality. No claim of net-zero cost is made.
+
+After the inventory confirms the planned resources are new, billing is enabled, the budget is saved and the estimate is acceptable, enable only the required APIs and continue at **step 3** below, then steps 4–8. Do not rerun creation commands against existing resources or rotate existing application keys.
+
+```bash
+gcloud services enable run.googleapis.com sqladmin.googleapis.com storage.googleapis.com secretmanager.googleapis.com iam.googleapis.com cloudscheduler.googleapis.com
+```
+
 ## 1. Get the source and verify the project
 
 Clone the GitHub repository in Cloud Shell. For a private repository, use your own GitHub login; do not paste a token into this chat. If you already have a checkout, preserve local changes and update it instead of cloning over it.
