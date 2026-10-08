@@ -80,6 +80,36 @@ def test_csrf_and_security_headers(app):
     assert c.get('/login').headers['Content-Security-Policy']
     assert c.post('/api/devices/activate',json={'code':'a'*32}).status_code==201
 
+def test_admin_csrf_through_mfa_and_logout(app, monkeypatch):
+    import re
+    import pyotp
+    from cryptography.fernet import Fernet
+    from inkora.security import cipher
+    app.config.update(WTF_CSRF_ENABLED=True, SECURE_DEPLOYMENT=True,
+                      SESSION_COOKIE_SECURE=True, ENCRYPTION_KEY=Fernet.generate_key().decode())
+    client=app.test_client()
+    def token(page):
+        return re.search(r'name="csrf_token" value="([^"]+)"', page.text).group(1)
+    page=client.get('/login', base_url='https://staging.example.test')
+    page=client.post('/login', base_url='https://staging.example.test',
+                     headers={'Referer':'https://staging.example.test/login'},
+                     data={'email':'admin@example.test','password':'long-password-example',
+                           'csrf_token':token(page)}, follow_redirects=True)
+    assert 'Secure your account' in page.text
+    with client.session_transaction(base_url='https://staging.example.test') as state:
+        encrypted=state['mfa_setup']
+    with app.app_context():
+        secret=cipher().decrypt(encrypted.encode()).decode()
+    page=client.post('/account/mfa', base_url='https://staging.example.test',
+                     headers={'Referer':'https://staging.example.test/account/mfa'},
+                     data={'code':pyotp.TOTP(secret).now(),'csrf_token':token(page)},
+                     follow_redirects=True)
+    assert page.status_code==200 and 'Welcome, Admin' in page.text
+    result=client.post('/logout', base_url='https://staging.example.test',
+                       headers={'Referer':'https://staging.example.test/'},
+                       data={'csrf_token':token(page)})
+    assert result.status_code==302
+
 def test_production_guards(monkeypatch):
     monkeypatch.setenv('INKORA_ENV','production')
     with pytest.raises(RuntimeError): create_app({'SECRET_KEY':'x'*48,'SQLALCHEMY_DATABASE_URI':'sqlite://'})
