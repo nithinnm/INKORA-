@@ -4,11 +4,31 @@ import getpass
 import hashlib
 import json
 import os
+import subprocess
 from pathlib import Path
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+cloud_run_auth = False
+
+
+def cloud_run_headers(base):
+    if not cloud_run_auth:
+        return {}
+    url = urllib.parse.urlsplit(base)
+    if url.scheme != 'https' or not (url.hostname or '').endswith('.run.app'):
+        raise SystemExit('--gcloud-auth is restricted to HTTPS Cloud Run endpoints.')
+    try:
+        result = subprocess.run(['gcloud', 'auth', 'print-identity-token'],
+                                capture_output=True, text=True, check=True, timeout=20)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        raise SystemExit('Google Cloud authentication unavailable; token/error output withheld.')
+    token = result.stdout.strip()
+    if not token or any(c in token for c in '\r\n'):
+        raise SystemExit('Invalid Google identity-token response; value withheld.')
+    return {'X-Serverless-Authorization': 'Bearer ' + token}
 
 
 def endpoint(value):
@@ -21,7 +41,7 @@ def endpoint(value):
 
 
 def post(base, path, data, token=None):
-    headers = {'Content-Type': 'application/json'}
+    headers = {'Content-Type': 'application/json', **cloud_run_headers(base)}
     if token:
         headers['Authorization'] = 'Bearer ' + token
     req = urllib.request.Request(base + path, data=json.dumps(data).encode(), headers=headers, method='POST')
@@ -49,7 +69,7 @@ def simulate_job(base, token, journal=None):
         print('An interrupted job exists in the local journal. Operator review is required; no new job was claimed.')
         return
     # A claim is not completed until the private download checksum has been verified.
-    headers = {'Authorization': 'Bearer ' + token}
+    headers = {'Authorization': 'Bearer ' + token, **cloud_run_headers(base)}
     req = urllib.request.Request(base + '/api/devices/jobs/claim', data=b'{}',
         headers={**headers, 'Content-Type':'application/json'}, method='POST')
     class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -84,16 +104,19 @@ def simulate_job(base, token, journal=None):
 
 
 def main():
+    global cloud_run_auth
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', required=True, type=endpoint)
     parser.add_argument('--identity', required=True, type=Path, help='Private identity file outside source control')
     parser.add_argument('--activate', action='store_true')
+    parser.add_argument('--gcloud-auth', action='store_true', help='Use Cloud Shell login for private Cloud Run IAM, separately from the device token')
     parser.add_argument('--status', choices=['ready', 'busy', 'error', 'paper_empty', 'unknown'], default='ready')
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--customer-qr',type=Path,help='Write a short-lived customer QR to a private PNG file')
     parser.add_argument('--journal',type=Path,help='Private durable simulator journal, required for --jobs')
     parser.add_argument('--jobs', action='store_true', help='Verify and complete one simulated job per heartbeat')
     args = parser.parse_args()
+    cloud_run_auth = args.gcloud_auth
     if args.activate:
         if args.identity.exists():
             parser.error('Identity already exists; refusing to consume an activation code.')
