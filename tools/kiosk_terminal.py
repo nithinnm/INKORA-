@@ -28,12 +28,15 @@ def create_terminal(identity_path, preview_host=None):
     def protect_local_agent():
         host=request.host.split(':')[0].lower()
         if host not in ('127.0.0.1','localhost',preview_host):
-            abort(403)
+            abort(403,'Preview hostname is not allowed. Restart with its exact --preview-host.')
         if request.method=='POST':
-            if request.headers.get('Origin') not in ('http://'+request.host,'https://'+request.host):
-                abort(403)
+            origins={'http://'+request.host,'https://'+request.host}
+            if preview_host:
+                origins.add('https://'+preview_host)
+            if request.headers.get('Origin') not in origins:
+                abort(403,'Preview origin is not allowed. Restart with its exact --preview-host.')
             if not secrets.compare_digest(request.headers.get('X-Kiosk-CSRF',''),nonce):
-                abort(403)
+                abort(403,'This touchscreen page expired. Reload it and try again.')
 
     @app.after_request
     def headers(response):
@@ -45,8 +48,14 @@ def create_terminal(identity_path, preview_host=None):
     @app.errorhandler(Exception)
     def errors(error):
         from werkzeug.exceptions import HTTPException
-        code=error.code if isinstance(error,HTTPException) else 503
-        return jsonify(error='Request unavailable. Refresh or ask the operator for help.'),code
+        if isinstance(error,HTTPException):
+            return jsonify(error=error.description),error.code
+        if isinstance(error,urllib.error.HTTPError):
+            messages={401:'Device authentication failed. Ask the operator to check enrollment.',
+                      403:'Cloud access was denied. Check the Cloud Shell login and device enrollment.',
+                      409:'Kiosk is unavailable or a customer session is still active. Keep heartbeats running and wait for session expiry.'}
+            return jsonify(error=messages.get(error.code,'Cloud request unavailable; HTTP '+str(error.code)+'. Ask the operator for help.')),503
+        return jsonify(error='Connection unavailable. Check the agent connection and retry.'),503
 
     @app.get('/')
     def home():

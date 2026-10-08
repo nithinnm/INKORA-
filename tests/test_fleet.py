@@ -126,6 +126,13 @@ def test_local_touchscreen_never_exposes_device_credentials_and_checks_origin(tm
     assert result.status_code==200 and credential not in result.text and 'upload_url' not in result.json
     assert calls==['/api/devices/customer-sessions']
     assert c.get('/qr.png').status_code==200
+    preview='8765-test.cloudshell.dev'
+    c=terminal.create_terminal(identity,preview_host=preview).test_client()
+    page=c.get('/')
+    nonce=re.search(r'name="kiosk-csrf" content="([^"]+)"',page.text).group(1)
+    result=c.post('/start',headers={'Origin':'https://'+preview,'X-Kiosk-CSRF':nonce})
+    assert result.status_code==200
+    assert c.post('/status',headers={'Origin':'https://evil.test','X-Kiosk-CSRF':nonce}).status_code==403
 
 def test_activation_single_use_and_device_identity(app):
     c=app.test_client()
