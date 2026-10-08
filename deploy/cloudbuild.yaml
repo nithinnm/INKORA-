@@ -1,0 +1,6 @@
+# Supply _IMAGE as a new registry tag; deploy the returned immutable digest.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'deploy/Dockerfile.cloudshell', '-t', '${_IMAGE}', '.']
+images:
+  - '${_IMAGE}'

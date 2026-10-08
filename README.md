@@ -1,8 +1,15 @@
 # INKORA Fleet
 
+INKORA sells and maintains kiosks. Buyers monitor their own machines through the
+owner control room; INKORA administrators monitor the entire fleet. See the
+[product requirements](docs/PRODUCT-CONTRACT.md) for the agreed scope and planned
+10% gross maintenance share. The owner dashboard uses tenant-scoped job summaries,
+India-day activity and explicit unknown hardware values; simulated quotes are
+never reported as collected revenue or settled shares.
+
 A new fleet platform built separately from the existing kiosk. This is a hardened, locally verified **private staging pilot**, not a live production kiosk release. Read [the production review](docs/PRODUCTION-REVIEW.md) for the source audit, architecture, recovery rules and launch gates.
 
-Implemented: role-scoped portals, encrypted MFA, owner invitations/recovery and session revocation, database-backed rate limits, kiosk activation/rotation/revocation, heartbeats, customer QR sessions, private PDF adapters, simulated job processing/review/retention, durable simulator journaling and a shared black/cyan/violet/pink theme. PDF uploads and simulated job processing are implemented for development only. Real payments, physical printer drivers, cloud deployment and software updates are not implemented.
+Implemented: role-scoped portals, encrypted MFA, owner invitations/recovery and session revocation, database-backed rate limits, kiosk activation/rotation/revocation, heartbeats, customer QR sessions, private PDF adapters, simulated job processing/review/retention, durable simulator journaling and a shared black/cyan/violet/pink theme. The Neon/Cloud Run staging pilot has user-reported readiness, login/MFA, scheduled maintenance and simulated-job completion evidence. Follow [Neon staging acceptance](docs/NEON-STAGING.md); newer source changes require a reviewed image release before appearing in that deployment. Real payments, physical printer drivers and fleet software updates remain unimplemented.
 
 ## Develop
 

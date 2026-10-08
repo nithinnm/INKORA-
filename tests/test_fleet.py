@@ -40,6 +40,36 @@ def test_owner_isolation_and_permissions(app):
     assert c.post('/owners',data={}).status_code==403
     assert c.post('/kiosks/2/activation').status_code==403
 
+def test_owner_control_room_isolates_jobs_and_never_counts_quotes_as_revenue(app):
+    from inkora.jobs import PrintJob
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from unittest.mock import patch
+    fixed=datetime(2026,10,8,12,tzinfo=ZoneInfo('Asia/Kolkata')).timestamp()
+    with app.app_context():
+        db.session.add_all([
+            PrintJob(id='a'*32,owner_id=2,kiosk_id=1,pages=2,amount_paise=750,
+                     mode='bw',duplex=False,file_hash='0'*64,state='completed',created_at=fixed),
+            PrintJob(id='b'*32,owner_id=3,kiosk_id=2,pages=99,amount_paise=99000,
+                     mode='bw',duplex=False,file_hash='1'*64,state='completed',created_at=fixed),
+            PrintJob(id='c'*32,owner_id=2,kiosk_id=1,pages=1,amount_paise=250,
+                     mode='bw',duplex=False,file_hash='2'*64,state='queued',created_at=fixed),
+            PrintJob(id='d'*32,owner_id=2,kiosk_id=1,pages=10,amount_paise=10000,
+                     mode='bw',duplex=False,file_hash='3'*64,state='completed',created_at=fixed-86400),
+        ])
+        db.session.commit()
+    import inkora.control_room as room
+    with patch.object(room,'datetime',wraps=datetime) as clock:
+        clock.now.return_value=datetime.fromtimestamp(fixed,ZoneInfo('UTC'))
+        owner=app.test_client();sign_in(owner,'a@example.test')
+        html=owner.get('/').text
+        assert 'OWNER CONTROL ROOM' in html and '₹7.50' in html
+        assert 'Beta' not in html and 'bbbbbbbbbbbb' not in html and '₹990.00' not in html
+        assert 'Payment integration pending' in html and 'Simulation · unpaid' in html
+        admin=app.test_client();sign_in(admin,'admin@example.test')
+        html=admin.get('/').text
+        assert 'FLEET OPERATIONS' in html and 'Beta' in html and '₹997.50' in html
+
 def test_activation_single_use_and_device_identity(app):
     c=app.test_client()
     result=c.post('/api/devices/activate',json={'code':'a'*32})

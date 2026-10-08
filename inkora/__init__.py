@@ -220,8 +220,9 @@ def create_app(config=None):
             query = query.where(Kiosk.owner_id == user.id)
         kiosks = db.session.scalars(query).all()
         owners = db.session.scalars(select(User).where(User.role == 'owner')).all() if user.role == 'admin' else []
+        from .control_room import summary
         return render_template('dashboard.html', user=user, kiosks=kiosks, owners=owners,
-                               online=sum(k.status == 'Online' for k in kiosks))
+                               online=sum(k.status == 'Online' for k in kiosks), room=summary(user))
 
     @app.post('/owners')
     @login_required(admin=True)
