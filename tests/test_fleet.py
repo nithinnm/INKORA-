@@ -70,6 +70,63 @@ def test_owner_control_room_isolates_jobs_and_never_counts_quotes_as_revenue(app
         html=admin.get('/').text
         assert 'FLEET OPERATIONS' in html and 'Beta' in html and '₹997.50' in html
 
+def test_touchscreen_status_is_device_scoped_and_completed_session_allows_next_customer(app):
+    from inkora.jobs import PrintJob
+    c=app.test_client()
+    token=c.post('/api/devices/activate',json={'code':'a'*32}).json['device_token']
+    headers={'Authorization':'Bearer '+token}
+    c.post('/api/devices/heartbeat',headers=headers,json={'printer_status':'ready','software_version':'test'})
+    result=c.post('/api/devices/customer-sessions',headers=headers,json={})
+    assert result.status_code==201
+    sid=result.json['session_id']
+    url='/api/devices/customer-sessions/status'
+    assert c.post(url,json={'session_id':sid}).status_code==401
+    assert c.post(url,headers=headers,json={'session_id':'0'*32}).status_code==404
+    status=c.post(url,headers=headers,json={'session_id':sid}).json
+    assert status['state']=='waiting_scan' and 'upload_url' not in status
+    with app.app_context():
+        db.session.add(PrintJob(id='e'*32,owner_id=2,kiosk_id=1,pages=1,amount_paise=250,
+            mode='bw',duplex=False,file_hash='0'*64,state='completed',customer_session_id=sid))
+        db.session.commit()
+    status=c.post(url,headers=headers,json={'session_id':sid}).json
+    assert status['state']=='completed' and status['amount_paise']==250
+    next_session=c.post('/api/devices/customer-sessions',headers=headers,json={})
+    assert next_session.status_code==201
+    cancel='/api/devices/customer-sessions/cancel'
+    assert c.post(cancel,headers=headers,json={'session_id':sid}).status_code==409
+    next_id=next_session.json['session_id']
+    assert c.post(cancel,headers=headers,json={'session_id':next_id}).status_code==200
+    assert c.post(url,headers=headers,json={'session_id':next_id}).json['state']=='expired'
+    with app.app_context():
+        kiosk=db.session.get(Kiosk,2);kiosk.device_hash=digest('b'*64);db.session.commit()
+    assert c.post(url,headers={'Authorization':'Bearer '+'b'*64},json={'session_id':sid}).status_code==404
+
+def test_local_touchscreen_never_exposes_device_credentials_and_checks_origin(tmp_path,monkeypatch):
+    import json,re
+    monkeypatch.syspath_prepend(str(__import__('pathlib').Path(__file__).resolve().parents[1]/'tools'))
+    import kiosk_terminal as terminal
+    identity=tmp_path/'identity.json'
+    credential='private-device-test-token'
+    identity.write_text(json.dumps({'url':'https://example.run.app','device_token':credential}))
+    identity.chmod(0o600)
+    calls=[]
+    def fake(base,path,data,token):
+        calls.append(path)
+        assert token==credential
+        return {'session_id':'a'*32,'upload_url':'https://example.run.app/print/private-customer-token','expires_in':180}
+    monkeypatch.setattr(terminal.agent,'post',fake)
+    c=terminal.create_terminal(identity).test_client()
+    page=c.get('/')
+    assert 'Tap to Start' in page.text and credential not in page.text
+    nonce=re.search(r'name="kiosk-csrf" content="([^"]+)"',page.text).group(1)
+    assert c.post('/start').status_code==403
+    assert c.post('/start',headers={'Origin':'https://evil.test','X-Kiosk-CSRF':nonce}).status_code==403
+    assert c.get('/',base_url='http://evil.test').status_code==403
+    result=c.post('/start',headers={'Origin':'http://localhost','X-Kiosk-CSRF':nonce})
+    assert result.status_code==200 and credential not in result.text and 'upload_url' not in result.json
+    assert calls==['/api/devices/customer-sessions']
+    assert c.get('/qr.png').status_code==200
+
 def test_activation_single_use_and_device_identity(app):
     c=app.test_client()
     result=c.post('/api/devices/activate',json={'code':'a'*32})
