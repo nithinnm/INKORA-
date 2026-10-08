@@ -21,6 +21,13 @@ The cloud API adds a device-scoped customer-session status operation; it returns
 only state, pages and quote, never a document URL or another kiosk's session.
 This requires the new image release but no database migration or secret rotation.
 
+The first touchscreen release exposed a PostgreSQL-specific outer-join locking
+defect in session creation (HTTP 503). The query now uses `FOR UPDATE OF kiosk`
+to serialize customer-session creation without locking the nullable joined owner
+row. The failure was reproduced on the isolated local `inkora_test` PostgreSQL
+database; after correction the full PostgreSQL suite passed 39 tests. This is
+local evidence; the corrected image must still be deployed and verified on Neon.
+
 Run on a kiosk computer using the pinned runtime dependencies in a private venv:
 
 ```bash

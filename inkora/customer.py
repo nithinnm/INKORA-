@@ -31,7 +31,9 @@ def register_customer(app):
         enabled()
         from .security import authenticate_device
         kiosk=authenticate_device()
-        kiosk=db.session.scalar(select(Kiosk).where(Kiosk.id==kiosk.id).with_for_update())
+        # The eager owner relationship uses an outer join. PostgreSQL must lock
+        # only the kiosk row, not the nullable side of that join.
+        kiosk=db.session.scalar(select(Kiosk).where(Kiosk.id==kiosk.id).with_for_update(of=Kiosk))
         if kiosk.status!='Online':
             abort(409,'Kiosk unavailable')
         finished=select(PrintJob.customer_session_id).where(PrintJob.customer_session_id.is_not(None),
