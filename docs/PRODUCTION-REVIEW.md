@@ -1,6 +1,23 @@
 # INKORA production review
 
-Status: hardened private staging pilot with local validation; not approved for live production or kiosk sales.
+Status: public simulated staging pilot; real paid printing has not passed production acceptance.
+
+## Current evidence — 10 October 2026
+
+This section supersedes historical provisioning statements below. Separate GCP
+staging, Neon migrations and least-privilege application role, Secret Manager,
+private GCS storage and Cloud Run readiness have been completed. Admin login/MFA,
+owner onboarding, owner isolation, kiosk activation, QR expiry and simulated
+phone-upload-to-completion were demonstrated in staging. Scheduled maintenance
+executed successfully under its scheduler service account. Two operational
+alerts were created and their shared email delivery path was tested successfully;
+the temporary test policy was removed. See MONITORING.md for the scope of that test.
+
+The GitHub workflow YAML parsing error was fixed in commit `2e67c01`;
+the replacement run's outcome still needs confirmation. Local test results do
+not establish GitHub runner success. Real payments, revenue-share accounting,
+physical printer integration and failure recovery remain production gates.
+Do not promote the simulator by changing the environment flag.
 
 ## Evidence and scope
 

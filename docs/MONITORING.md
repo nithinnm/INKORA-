@@ -24,6 +24,21 @@ a started execution, a completely idle inaccessible service, and individual stal
 devices require additional monitoring. They are initial staging policies, not
 proof of full production observability.
 
+## Observed staging acceptance — 10 October 2026
+
+The two operational policies were created in project `inkora-510915`.
+An isolated temporary policy watching successful staging requests triggered a
+Google Cloud incident email, which the user confirmed with an inbox screenshot.
+The temporary policy was subsequently removed with
+`tools/cloudshell_alert_delivery_test.py --cleanup`; both operational policies
+were preserved. This proves the shared email delivery path, not that every
+operational failure scenario has been exercised.
+
+For future retesting, `tools/cloudshell_alert_delivery_test.py` creates only its
+marked temporary policy and sends one ordinary readiness request. Check inbox
+and spam, then remove that policy using `--cleanup`. No application failure is
+required. GitHub CI notifications are separate from Cloud Monitoring alerts.
+
 Configuration is not notification-delivery evidence. Verify policy/channel state
 in Console and test an isolated synthetic failure. Do not break the running web
 service, revoke Neon/GCS access or run retention against another database just to
