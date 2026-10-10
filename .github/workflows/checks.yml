@@ -30,6 +30,9 @@ jobs:
       - run: pip install -r requirements-lock.txt
       - run: pip check
       - run: pip-audit --local
-      - run: python -m pip download --only-binary=:all: -r requirements-runtime-hashed.txt -r requirements-build-lock.txt --require-hashes -d .build/wheels
+      - run: >-
+          python -m pip download --only-binary=:all:
+          -r requirements-runtime-hashed.txt -r requirements-build-lock.txt
+          --require-hashes -d .build/wheels
       - run: docker build --network=none -t inkora:ci .
       - run: python -m pytest -q
