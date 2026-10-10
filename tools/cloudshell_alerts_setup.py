@@ -1,5 +1,6 @@
 """Create missing INKORA staging alerts using Cloud Shell login; preserve existing policies."""
 import json
+import argparse
 import subprocess
 import urllib.error
 import urllib.parse
@@ -41,7 +42,7 @@ def policies():
     return result
 
 
-def main():
+def main(check_only=False):
     login=subprocess.run(['gcloud','auth','print-access-token','--account='+ACCOUNT],
                          capture_output=True,text=True,check=True,timeout=30)
     token=login.stdout.strip()
@@ -53,9 +54,22 @@ def main():
             headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'},
             data=json.dumps(body).encode() if body is not None else None,
             method='POST' if body is not None else 'GET')
-        with urllib.request.urlopen(request,timeout=30) as response:
-            return json.load(response)
+        try:
+            with urllib.request.urlopen(request,timeout=30) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            # Requests contain only public monitoring configuration, never
+            # application secrets. Keep the bearer token out of diagnostics.
+            try:
+                detail=json.load(error).get('error',{})
+                message=str(detail.get('message','No API validation detail supplied.'))
+            except (ValueError,AttributeError):
+                message='No structured API validation detail supplied.'
+            message=message.replace(token,'[REDACTED]')
+            raise SystemExit('Monitoring HTTP '+str(error.code)+' during '+
+                ('POST ' if body is not None else 'GET ')+path+': '+message[:1500])
 
+    print('Checking email channel metadata...',flush=True)
     channel=api('/notificationChannels/'+CHANNEL.rsplit('/',1)[-1])
     if channel.get('type')!='email' or not channel.get('enabled'):
         raise SystemExit('Stop: expected email channel is not enabled.')
@@ -64,12 +78,14 @@ def main():
     required={'run.googleapis.com/request_count':'response_code_class',
               'run.googleapis.com/job/completed_execution_count':'result'}
     for metric,label in required.items():
+        print('Checking metric descriptor: '+metric,flush=True)
         descriptor=api('/metricDescriptors/'+urllib.parse.quote(metric,safe=''))
         if descriptor.get('metricKind')!='DELTA' or descriptor.get('valueType')!='INT64':
             raise SystemExit('Stop: metric definition differs from expected counter type.')
         if label not in {v['key'] for v in descriptor.get('labels',[])}:
             raise SystemExit('Stop: required metric label is unavailable: '+label)
         print('Verified metric definition: '+metric,flush=True)
+    print('Inspecting existing alert policies...',flush=True)
     existing=[]
     next_page=None
     while True:
@@ -92,7 +108,11 @@ def main():
                 raise SystemExit('Stop: existing policy differs; inspect it before changing anything.')
             print('Existing matching policy preserved: '+expected['displayName'],flush=True)
         else:missing.append(expected)
+    if check_only:
+        print('Read-only preflight passed; '+str(len(missing))+' policies are missing. No policies changed.',flush=True)
+        return
     for expected in missing:
+        print('Creating policy: '+expected['displayName'],flush=True)
         created=api('/alertPolicies',expected)
         print('Created: '+created['displayName'],flush=True)
         print('Policy resource: '+created['name'],flush=True)
@@ -100,8 +120,11 @@ def main():
 
 
 if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check-only',action='store_true',help='Read metadata and metric definitions without creating policies')
+    args=parser.parse_args()
     try:
-        main()
+        main(check_only=args.check_only)
     except urllib.error.HTTPError as error:
         raise SystemExit('Monitoring API returned HTTP '+str(error.code)+'. No credentials or API payload printed. Stop and report this status.')
     except urllib.error.URLError as error:
