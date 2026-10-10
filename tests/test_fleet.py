@@ -590,3 +590,112 @@ def test_per_kiosk_prices_preserve_existing_quotes(app):
 def test_original_kiosk_cloud_binding_is_rejected():
     with pytest.raises(RuntimeError,match='original kiosk'):
         create_app({'SECRET_KEY':'x'*48,'GCS_BUCKET':'print-kiosk-64820.firebasestorage.app'})
+
+
+def service_request(client, kiosk_id=1, key='a'*32, **changes):
+    data={'kiosk_id':str(kiosk_id),'request_key':key,'category':'printer',
+          'title':'Printer needs attention','description':'Paper is jammed in the printer.'}
+    data.update(changes)
+    return client.post('/support',data=data)
+
+
+def test_service_request_owner_isolation_and_server_derived_ownership(app):
+    from inkora.support import ServiceRequest
+    a=app.test_client();sign_in(a,'a@example.test')
+    opened=service_request(a,owner_id='3');assert opened.status_code==302
+    detail=opened.location
+    with app.app_context():
+        ticket=db.session.scalar(db.select(ServiceRequest))
+        assert ticket.owner_id==2 and ticket.requester_id==2
+    b=app.test_client();sign_in(b,'b@example.test')
+    assert b.get(detail).status_code==404
+    assert 'Printer needs attention' not in b.get('/support').text
+    assert service_request(a,kiosk_id=2,key='b'*32).status_code==404
+    assert a.post(detail+'/update',data={'status':'in_progress','version':'1','note':'Investigating this problem.'}).status_code==403
+    admin=app.test_client();sign_in(admin,'admin@example.test')
+    assert 'Printer needs attention' in admin.get('/support').text
+
+
+def test_service_request_idempotent_retry_and_changed_details_rejected(app):
+    from inkora.support import ServiceRequest,ServiceEvent
+    c=app.test_client();sign_in(c,'a@example.test')
+    first=service_request(c);second=service_request(c)
+    assert first.location==second.location
+    assert service_request(c,title='Different request title').status_code==409
+    with app.app_context():
+        assert db.session.scalar(db.select(db.func.count(ServiceRequest.id)))==1
+        assert db.session.scalar(db.select(db.func.count(ServiceEvent.id)))==1
+
+
+def test_service_history_transition_and_stale_write_preserve_all_events(app):
+    from inkora.support import ServiceRequest,ServiceEvent
+    c=app.test_client();sign_in(c,'a@example.test');url=service_request(c).location
+    sign_in(c,'admin@example.test')
+    assert c.post(url+'/update',data={'status':'resolved','version':'1','note':'Resolved without starting work.'}).status_code==409
+    assert c.post(url+'/update',data={'status':'in_progress','version':'1','note':'Engineer is inspecting the jam.'}).status_code==302
+    assert c.post(url+'/update',data={'status':'resolved','version':'1','note':'An outdated resolution attempt.'}).status_code==409
+    assert c.post(url+'/update',data={'status':'resolved','version':'2','note':'Jam cleared and paper path checked.'}).status_code==302
+    assert c.post(url+'/update',data={'status':'open','version':'3','note':'Reopened after recurrence of fault.'}).status_code==302
+    with app.app_context():
+        ticket=db.session.scalar(db.select(ServiceRequest))
+        assert ticket.status=='open' and ticket.version==4
+        events=db.session.scalars(db.select(ServiceEvent).order_by(ServiceEvent.id)).all()
+        assert [e.status for e in events]==['open','in_progress','resolved','open']
+    sign_in(c,'a@example.test')
+    assert 'Jam cleared and paper path checked.' in c.get(url).text
+    assert '1</strong> active service requests' in c.get('/').text
+
+
+def test_service_request_content_is_escaped_and_cannot_overflow_fields(app):
+    c=app.test_client();sign_in(c,'a@example.test')
+    result=service_request(c,title='<script>alert(1)</script>',description='<img src=x onerror=alert(1)>')
+    page=c.get(result.location).text
+    assert '<script>alert(1)</script>' not in page and '&lt;script&gt;' in page
+    assert '<img src=x' not in page
+    assert service_request(c,key='b'*32,description='x'*2001).status_code==400
+    assert service_request(c,key='c'*32,category='arbitrary').status_code==400
+    assert c.get('/support?page=-1').status_code==400
+
+
+def test_service_request_after_kiosk_reassignment_hides_former_owner_history(app):
+    c=app.test_client();sign_in(c,'a@example.test');url=service_request(c).location
+    with app.app_context():
+        db.session.get(Kiosk,1).owner_id=3;db.session.commit()
+    assert c.get(url).status_code==404
+    sign_in(c,'b@example.test')
+    assert c.get(url).status_code==404
+    sign_in(c,'admin@example.test')
+    assert c.get(url).status_code==200
+
+
+def test_service_request_csrf_enforced(app):
+    import re
+    c=app.test_client();sign_in(c,'a@example.test')
+    app.config['WTF_CSRF_ENABLED']=True
+    assert service_request(c).status_code==400
+    page=c.get('/support').text
+    token=re.search('name="csrf_token" value="([^"]+)"',page).group(1)
+    assert service_request(c,csrf_token=token).status_code==302
+
+
+def test_service_request_does_not_expose_admin_notes_form_to_owner(app):
+    c=app.test_client();sign_in(c,'a@example.test');url=service_request(c).location
+    assert 'Record an INKORA update' not in c.get(url).text
+    assert 'Paper is jammed' in c.get(url).text
+    with c.session_transaction() as session:session.clear()
+    assert c.get('/support').status_code==302
+
+
+def test_service_request_concurrent_admin_update_has_one_winner(app):
+    if not app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgresql'):
+        pytest.skip('PostgreSQL optimistic-update concurrency test')
+    from inkora.support import ServiceEvent
+    owner=app.test_client();sign_in(owner,'a@example.test');url=service_request(owner).location
+    first=app.test_client();second=app.test_client()
+    sign_in(first,'admin@example.test');sign_in(second,'admin@example.test')
+    def save(client):
+        return client.post(url+'/update',data={'status':'in_progress','version':'1','note':'Inspecting the printer fault.'}).status_code
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results=list(executor.map(save,[first,second]))
+    assert sorted(results)==[302,409]
+    with app.app_context():assert db.session.scalar(db.select(db.func.count(ServiceEvent.id)))==2

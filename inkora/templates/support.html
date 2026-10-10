@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block content %}
+<p class="badge">INKORA · MAINTENANCE</p><h1>Maintenance and support</h1>
+<p>{{ 'Track service requests across every owner’s kiosks.' if user.role == 'admin' else 'Report problems with your kiosks. INKORA tracks and maintains your machines.' }}</p>
+<p><a href="{{ url_for('dashboard') }}">Return to control room</a></p>
+<section class="panel"><h2>Service requests</h2><div class="table-wrap"><table><thead><tr><th>Request</th><th>Kiosk</th><th>Status</th><th>Updated</th></tr></thead><tbody>
+{% for ticket, kiosk_name in tickets %}<tr><td><a href="{{ url_for('service_request_detail', request_id=ticket.id) }}">{{ ticket.title }}</a></td><td>{{ kiosk_name }}</td><td>{{ ticket.status|replace('_',' ')|title }}</td><td>{{ ticket.updated_at|support_time }}</td></tr>{% else %}<tr><td colspan="4">No service requests yet.</td></tr>{% endfor %}
+</tbody></table></div><nav aria-label="Service request pages">{% if page > 1 %}<a href="{{ url_for('service_requests',page=page-1) }}">Previous page</a>{% endif %} {% if has_next %}<a href="{{ url_for('service_requests',page=page+1) }}">Next page</a>{% endif %}</nav></section>
+<section class="panel"><h2>Report a kiosk problem</h2>{% if kiosks %}<p>Do not include passwords, payment details, private upload links or customer documents.</p>
+<form action="{{ url_for('create_service_request') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="request_key" value="{{ request_key }}">
+<label>Kiosk<select name="kiosk_id" required>{% for kiosk in kiosks %}<option value="{{ kiosk.id }}">{{ kiosk.name }} · INK-{{ '%04d'|format(kiosk.id) }}</option>{% endfor %}</select></label>
+<label>Category<select name="category" required><option value="printer">Printer / jam</option><option value="paper_ink">Paper / ink</option><option value="connectivity">Connectivity</option><option value="other">Other</option></select></label>
+<label>Title<input name="title" minlength="5" maxlength="120" required></label>
+<label>Problem description<textarea name="description" rows="5" minlength="10" maxlength="2000" required></textarea></label><button type="submit">Submit service request</button></form>
+{% else %}<p>No kiosks are assigned to your account. Contact INKORA for onboarding.</p>{% endif %}</section>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block content %}
+<p class="badge">INKORA · SERVICE REQUEST</p><h1>{{ ticket.title }}</h1><p><a href="{{ url_for('service_requests') }}">All service requests</a></p>
+<section class="panel"><div class="room-heading"><h2>{{ kiosk.name }}</h2><span class="status-pill">{{ ticket.status|replace('_',' ')|title }}</span></div><p>{{ kiosk.location }} · INK-{{ '%04d'|format(kiosk.id) }} · {{ ticket.category|replace('_',' ')|title }}</p><p>Opened {{ ticket.created_at|support_time }}</p><p class="service-note">{{ ticket.description }}</p></section>
+<section class="panel"><h2>Service history</h2>{% for event in events %}<article class="service-event"><strong>{{ event.status|replace('_',' ')|title }}</strong><small>{{ event.created_at|support_time }}</small><p class="service-note">{{ event.note }}</p></article>{% endfor %}</section>
+{% if user.role == 'admin' %}<section class="panel"><h2>Record an INKORA update</h2><p>Updates are visible to the kiosk owner. Describe the work or next step without including sensitive information.</p>
+<form action="{{ url_for('update_service_request', request_id=ticket.id) }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ ticket.version }}">
+<label>Status<select name="status" required>{% for status in transitions %}<option value="{{ status }}">{{ status|replace('_',' ')|title }}</option>{% endfor %}</select></label><label>Service note<textarea name="note" rows="5" minlength="10" maxlength="2000" required></textarea></label><button type="submit">Save service update</button></form></section>{% endif %}
+{% endblock %}

@@ -221,8 +221,10 @@ def create_app(config=None):
         kiosks = db.session.scalars(query).all()
         owners = db.session.scalars(select(User).where(User.role == 'owner')).all() if user.role == 'admin' else []
         from .control_room import summary
+        from .support import active_count
         return render_template('dashboard.html', user=user, kiosks=kiosks, owners=owners,
-                               online=sum(k.status == 'Online' for k in kiosks), room=summary(user))
+                               online=sum(k.status == 'Online' for k in kiosks), room=summary(user),
+                               active_requests=active_count(user))
 
     @app.post('/owners')
     @login_required(admin=True)
@@ -387,4 +389,6 @@ def create_app(config=None):
     register_devices(app)
     from .maintenance import register_maintenance
     register_maintenance(app)
+    from .support import register_support
+    register_support(app, login_required)
     return app
