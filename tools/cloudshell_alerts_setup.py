@@ -79,7 +79,7 @@ def main(check_only=False):
               'run.googleapis.com/job/completed_execution_count':'result'}
     for metric,label in required.items():
         print('Checking metric descriptor: '+metric,flush=True)
-        descriptor=api('/metricDescriptors/'+urllib.parse.quote(metric,safe=''))
+        descriptor=api('/metricDescriptors/'+urllib.parse.quote(metric,safe='/'))
         if descriptor.get('metricKind')!='DELTA' or descriptor.get('valueType')!='INT64':
             raise SystemExit('Stop: metric definition differs from expected counter type.')
         if label not in {v['key'] for v in descriptor.get('labels',[])}:
