@@ -11,8 +11,15 @@ history and service requests. One owner may purchase several kiosks.
 
 INKORA administrators monitor every owner and kiosk, onboard and revoke devices,
 manage pricing under the agreed policy, see owner-wise and total revenue,
-track the planned 10% gross maintenance share, settlements and maintenance.
+track the confirmed 10% gross maintenance share, settlements and maintenance.
 Owner isolation must apply to every query and action, not merely the UI.
+
+Payments must automatically allocate 90% gross to the kiosk owner's linked
+account and 10% to INKORA after valid capture, using the provider's supported
+platform transfer arrangement. For ₹10, this means ₹9 owner / ₹1 INKORA before
+separate fees/taxes/refunds. Bank settlement is distinct from transfer allocation;
+never advertise instant bank credit without provider evidence. See
+PAYMENTS-ROUTE.md for prerequisites, rounding and reconciliation requirements.
 
 Customer journey: kiosk QR, private PDF upload, print settings, immutable quote,
 payment, assigned device printing and clear status/recovery. Ambiguous physical
