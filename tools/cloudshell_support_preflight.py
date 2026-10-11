@@ -81,7 +81,7 @@ def main():
     # Logs can arrive after execution finishes. Let the user retrieve them in one
     # precise command rather than polling or rerunning an existing operation.
     print('Read stdout for this execution with:')
-    print('gcloud logging read '+shlex.quote('resource.type="cloud_run_job" AND resource.labels.job_name="'+JOB+'" AND labels."run.googleapis.com/execution_name"="'+name+'" AND log_id("run.googleapis.com/stdout")')+' --project='+PROJECT+' --freshness=1h --limit=10 --format="value(textPayload)"')
+    print('gcloud logging read '+shlex.quote('resource.type="cloud_run_job" AND resource.labels.job_name="'+JOB+'" AND labels."run.googleapis.com/execution_name"="'+name+'" AND log_id("run.googleapis.com/stdout")')+' --project='+PROJECT+' --freshness=1h --limit=10 --format="json(textPayload,jsonPayload)"')
 
 
 if __name__ == '__main__':
