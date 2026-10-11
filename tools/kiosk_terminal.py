@@ -57,9 +57,17 @@ def create_terminal(identity_path, preview_host=None):
             return jsonify(error=messages.get(error.code,'Cloud request unavailable; HTTP '+str(error.code)+'. Ask the operator for help.')),503
         return jsonify(error='Connection unavailable. Check the agent connection and retry.'),503
 
+    logo_path=Path(__file__).resolve().parent.parent/'inkora'/'static'/'branding'/'inkora-logo.png'
+
+    @app.get('/brand-logo.png')
+    def brand_logo():
+        if not logo_path.is_file():
+            abort(404)
+        return send_file(logo_path, mimetype='image/png')
+
     @app.get('/')
     def home():
-        return render_template('terminal.html',nonce=nonce)
+        return render_template('terminal.html',nonce=nonce,brand_logo_available=logo_path.is_file())
 
     @app.post('/start')
     def start():

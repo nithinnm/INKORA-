@@ -1,6 +1,6 @@
 'use strict';
 const el=id=>document.getElementById(id);
-let active=false, busy=false, polling=null;
+let active=false, busy=false, polling=null, lastState=null;
 async function request(path){
   const response=await fetch(path,{method:'POST',headers:{'X-Kiosk-CSRF':document.querySelector('meta[name="kiosk-csrf"]').content},credentials:'same-origin'});
   const data=await response.json();
@@ -9,6 +9,12 @@ async function request(path){
 }
 function display(data){
   const state=data.state;
+  if(state!==lastState){
+    el('flow').classList.remove('state-enter');
+    void el('flow').offsetWidth;
+    el('flow').classList.add('state-enter');
+    lastState=state;
+  }
   const screens={waiting_scan:['01 · YOUR PHONE IS NEXT','Scan. Upload. Done.','Point your phone camera at the QR code.'],waiting_upload:['02 · WAITING ON YOUR PHONE','Your phone has the wheel.','Choose your PDF and print style on your phone.'],queued:['03 · STAGING QUOTE','Ready for the print station.','Payment is skipped only in this simulation. Your document is queued.'],claimed:['04 · PREPARING','Your file is on its way.','The agent is verifying your document.'],printing:['05 · PRINTING SIMULATION','Paper, meet destiny.','The simulator is processing your job.'],completed:['06 · COMPLETE','All done.','Simulated printing completed. No physical print or payment occurred.'],needs_review:['OPERATOR HELP','Your job needs attention.','Ask the kiosk operator for help. Do not retry an uncertain print.'],cancelled:['SESSION ENDED','This job was cancelled.','Ask the kiosk operator for help.'],expired:['SESSION ENDED','Your QR has expired.','Tap Finish to return to the start screen.']};
   const screen=screens[state];if(!screen) return;
   el('step').textContent=screen[0];el('title').textContent=screen[1];el('description').textContent=screen[2];

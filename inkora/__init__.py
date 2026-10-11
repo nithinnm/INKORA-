@@ -119,6 +119,10 @@ def create_app(config=None):
     db.init_app(app)
     csrf.init_app(app)
     Migrate(app, db)
+    @app.context_processor
+    def brand_assets():
+        return {'brand_logo_available': os.path.isfile(os.path.join(app.static_folder, 'branding', 'inkora-logo.png'))}
+
     dummy_hash = generate_password_hash(secrets.token_urlsafe(32))
 
     def login_required(admin=False):

@@ -1,1 +1,32 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>INKORA · Fleet</title><link rel="stylesheet" href="{{ url_for('static',filename='theme.css') }}"></head><body><header><a class="brand" href="/">INK<span>O</span>RA</a>{% if session.user_id %}<div>Fleet platform · <a href="/jobs">Simulated printing</a> · <a href="/support">Maintenance</a> · <a href="/account/mfa">Account security</a></div>{% else %}<div>Print The Way You Want</div>{% endif %}{% if session.user_id %}<form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Sign out</button></form>{% endif %}</header><main>{% block content %}{% endblock %}</main><footer>Print The Way You Want · Simulation only · No payments or physical printer output.</footer></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080b14">
+<title>{% block title %}INKORA · Fleet platform{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static',filename='theme.css') }}">
+</head>
+{% set workspace = session.user_id and request.endpoint not in ('customer_upload','reset','login','challenge') %}
+<body class="{{ 'workspace' if workspace else 'public-page' }}">
+<a class="skip-link" href="#main-content">Skip to content</a>
+{% macro branding() %}<a class="brand" href="{{ url_for('dashboard') }}" aria-label="INKORA home">{% if brand_logo_available %}<img src="{{ url_for('static',filename='branding/inkora-logo.png') }}" alt="INKORA · Print the way you want" width="184" height="99">{% else %}<span class="brand-word">INK<span>O</span>RA</span><small>PRINT THE WAY YOU WANT</small>{% endif %}</a>{% endmacro %}
+{% if workspace %}
+<aside class="sidebar">
+{{ branding() }}
+<p class="nav-label">YOUR WORKSPACE</p>
+<nav class="workspace-nav" aria-label="Main navigation">
+<a href="{{ url_for('dashboard') }}" {% if request.endpoint == 'dashboard' %}aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">◫</span><span>Control room</span></a>
+<a href="{{ url_for('jobs') }}" {% if request.endpoint in ('jobs','upload_job') %}aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">▤</span><span>Print workspace</span></a>
+<a href="{{ url_for('service_requests') }}" {% if request.endpoint in ('service_requests','service_request_detail','create_service_request','update_service_request') %}aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">◇</span><span>Maintenance</span></a>
+<a href="{{ url_for('mfa') }}" {% if request.endpoint in ('mfa','challenge') %}aria-current="page"{% endif %}><span class="nav-icon" aria-hidden="true">⊙</span><span>Account security</span></a>
+</nav>
+<div class="sidebar-bottom"><div class="brand-orbit" aria-hidden="true"></div><strong>Made for your fleet.</strong><p>Your kiosks. One connected workspace.</p><span class="environment-pill"><i aria-hidden="true"></i> STAGING PILOT</span></div>
+</aside>
+{% endif %}
+<header class="app-header">
+{% if not workspace %}{{ branding() }}{% else %}<div class="header-context"><span class="muted">INKORA PLATFORM</span><strong>{{ 'Fleet operations' if (user is defined and user.role == 'admin') or (admin is defined and admin) else 'Your workspace' }}</strong></div>{% endif %}
+<div class="header-actions"><span class="environment-pill"><i aria-hidden="true"></i> SIMULATED PRINTING</span>{% if session.user_id %}<form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button-quiet" type="submit">Sign out <span aria-hidden="true">↗</span></button></form>{% endif %}</div>
+</header>
+<main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>
+<footer><span>INKORA <span class="footer-dot">·</span> PRINT THE WAY YOU WANT</span><span>Staging pilot · No payments or physical printer output.</span></footer>
+</body></html>
