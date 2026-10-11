@@ -19,3 +19,14 @@ hosted Cloud Run revision is unchanged by these source changes.
 Validated locally with the existing test suite and Chromium desktop (1440 px)
 and phone (390 px) renders. The reviewed pages fit their viewport; wide data
 tables retain their own horizontal scrolling. Screenshots use synthetic data.
+
+## Responsive staging job pickup
+
+The simulator with `--jobs` checks the queue every second independently of its
+30-second heartbeat. The touchscreen refreshes an active session every second
+and keeps its single-request guard. Network/API failures retain 30-second backoff.
+Private download verification and durable journal protection still precede
+completion. This removes the previous up-to-30-second queue polling delay; it
+cannot guarantee instant completion across network, validation, or real printing.
+These local tool changes require restarting both Cloud Shell processes, with no
+Cloud Run rebuild, deployment, database migration or credential changes.

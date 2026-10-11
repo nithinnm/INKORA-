@@ -64,7 +64,7 @@ def save_identity(path, identity):
         json.dump(identity, f)
 
 
-def simulate_job(base, token, journal=None):
+def simulate_job(base, token, journal=None, quiet=False):
     if journal and journal.pending():
         print('An interrupted job exists in the local journal. Operator review is required; no new job was claimed.')
         return
@@ -78,7 +78,8 @@ def simulate_job(base, token, journal=None):
     opener = urllib.request.build_opener(NoRedirect())
     with opener.open(req, timeout=10) as response:
         if response.status == 204:
-            print('No queued simulated jobs.')
+            if not quiet:
+                print('No queued simulated jobs.')
             return
         job = json.load(response)
     if journal:
@@ -114,7 +115,7 @@ def main():
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--customer-qr',type=Path,help='Write a short-lived customer QR to a private PNG file')
     parser.add_argument('--journal',type=Path,help='Private durable simulator journal, required for --jobs')
-    parser.add_argument('--jobs', action='store_true', help='Verify and complete one simulated job per heartbeat')
+    parser.add_argument('--jobs', action='store_true', help='Check for simulated jobs every second; heartbeats remain every 30 seconds')
     args = parser.parse_args()
     cloud_run_auth = args.gcloud_auth
     if args.activate:
@@ -135,10 +136,14 @@ def main():
     if args.journal:
         from spool import Journal
         journal=Journal(args.journal)
+    next_heartbeat = 0.0
     while True:
+        delay = 1 if args.jobs and args.status == 'ready' else 30
         try:
-            result = post(args.url, '/api/devices/heartbeat', {'printer_status':args.status, 'software_version':'sim-0.2'}, identity['device_token'])
-            print(f"Kiosk {result['kiosk_id']}: {result['status']}")
+            if time.monotonic() >= next_heartbeat:
+                result = post(args.url, '/api/devices/heartbeat', {'printer_status':args.status, 'software_version':'sim-0.2'}, identity['device_token'])
+                print(f"Kiosk {result['kiosk_id']}: {result['status']}")
+                next_heartbeat = time.monotonic() + 30
             if args.customer_qr:
                 import qrcode
                 result=post(args.url,'/api/devices/customer-sessions',{},identity['device_token'])
@@ -148,18 +153,20 @@ def main():
                 print('Customer QR saved. It expires in three minutes; no URL or token was logged.')
                 args.customer_qr=None
             if args.jobs and args.status == 'ready':
-                simulate_job(args.url, identity['device_token'], journal)
+                simulate_job(args.url, identity['device_token'], journal, quiet=not args.once)
         except urllib.error.HTTPError as error:
-            print(f'Server rejected heartbeat (HTTP {error.code}).')
+            delay = 30
+            print(f'Server rejected device request (HTTP {error.code}).')
             if error.code in (401,403) or args.once:
                 raise SystemExit(1)
         except (urllib.error.URLError, TimeoutError):
+            delay = 30
             print('Connection unavailable; no printing is performed. Retrying in 30 seconds.')
             if args.once:
                 raise SystemExit(1)
         if args.once:
             break
-        time.sleep(30)
+        time.sleep(delay)
     if journal:
         journal.close()
 
