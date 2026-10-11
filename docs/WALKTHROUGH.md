@@ -1,6 +1,32 @@
 # INKORA walkthrough
 
-This walkthrough covers the working **private staging pilot**. It does not authorize a sales launch. The first kiosk and its Firebase resources remain separate. The pilot never takes real payments or prints physical sheets.
+This walkthrough covers the working **public simulated staging pilot**. It does not authorize a sales launch. The first kiosk and its Firebase resources remain separate. The pilot never takes real payments or prints physical sheets.
+
+
+## Existing hosted staging — verified 11 October 2026
+
+Use the existing service at https://inkora-staging-433513064052.asia-south1.run.app.
+Do not repeat environment provisioning, migration, admin creation or activation
+steps below for an already onboarded kiosk. Those sections describe first setup.
+
+Revision `inkora-staging-00006-nh8` was deployed with the maintenance image;
+readiness passed. The user verified owner request creation, admin progress and
+resolution, owner-visible service history, a second owner's empty scoped list,
+and direct cross-owner request denial. A simulated print job completed after the
+rollout. The database migration head is `e7b01486cf20`. Migration job and temporary
+owner-connection secret were removed after successful execution.
+
+Owners use Maintenance to report kiosk issues; INKORA administrators record work
+and resolve/reopen requests. Admin password recovery is documented separately in
+ADMIN-PASSWORD-RECOVERY.md. Owner password recovery uses an admin-issued private,
+expiring single-use link. Keep authenticator keys and recovery links private.
+
+The local synthetic restore drill now verifies counts and row fingerprints for
+all eleven tables, including service requests/history. This does not establish
+Neon restore capability, bank transfers, physical printing or production approval.
+The safety branch remains in Neon pending recovery acceptance. Payment onboarding
+is deferred until the user's business bank account and Razorpay Route arrangement
+are available. Production hardware testing remains blocked by unavailable hardware.
 
 ## What you can do now
 

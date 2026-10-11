@@ -24,9 +24,22 @@ fd=os.open(backup,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
 with os.fdopen(fd,'wb') as output:
     result=subprocess.run(['docker','exec',container,'pg_dump','-U','postgres','-Fc',source],stdout=output,stderr=subprocess.PIPE,check=True)
 command('pg_restore','-U','postgres','-d',target,'--no-owner','--no-acl',input=backup.read_bytes())
-query='''SELECT json_build_object('users',(SELECT count(*) FROM "user"),'kiosks',(SELECT count(*) FROM kiosk),'jobs',(SELECT count(*) FROM print_job),'audit',(SELECT count(*) FROM audit),'revision',(SELECT version_num FROM alembic_version));'''
+tables=('user','kiosk','print_job','audit','account_token','customer_session',
+        'rate_bucket','job_review','service_request','service_event','alembic_version')
+parts=[]
+for table in tables:
+    # All identifiers are fixed above. Compare canonical row fingerprints as
+    # well as counts, without printing account records or password hashes.
+    parts.append("'"+table+"', (SELECT json_build_object('count', count(*), 'fingerprint', "
+                 "md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]'))) "
+                 'FROM "'+table+'" t)')
+query='SELECT json_build_object('+','.join(parts)+');'
 before=json.loads(command('psql','-U','postgres','-d',source,'-Atc',query))
 after=json.loads(command('psql','-U','postgres','-d',target,'-Atc',query))
-if before!=after or before['users']==0:
+if before!=after or before['user']['count']==0:
     raise SystemExit('Restore verification failed')
-print(json.dumps({'result':'restored synthetic database','source_counts':before,'restored_counts':after}))
+print(json.dumps({'result':'restored synthetic database',
+                  'tables_verified':len(tables),
+                  'row_counts':{table:data['count'] for table,data in after.items()},
+                  'row_fingerprints_match':True,
+                  'scope':'local synthetic data only; no Neon recovery tested'}))
