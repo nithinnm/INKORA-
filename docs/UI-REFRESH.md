@@ -22,11 +22,20 @@ tables retain their own horizontal scrolling. Screenshots use synthetic data.
 
 ## Responsive staging job pickup
 
-The simulator with `--jobs` checks the queue every second independently of its
-30-second heartbeat. The touchscreen refreshes an active session every second
-and keeps its single-request guard. Network/API failures retain 30-second backoff.
-Private download verification and durable journal protection still precede
-completion. This removes the previous up-to-30-second queue polling delay; it
-cannot guarantee instant completion across network, validation, or real printing.
-These local tool changes require restarting both Cloud Shell processes, with no
-Cloud Run rebuild, deployment, database migration or credential changes.
+The touchscreen checks QR scan status every five seconds, then checks an active
+scanned session every second. It stops polling at completion, cancellation, expiry
+or review. The simulator checks for queued work every second only when a fresh,
+private local activity hint says the touchscreen has observed a queued upload.
+Before upload it does not make fast cloud claim requests. The hint contains only
+a boolean and monotonic timestamp, no credentials or customer identifiers.
+
+Heartbeats remain every 30 seconds. With no touchscreen or a stale hint, a slow
+30-second queue check preserves standalone simulator operation. Network/API
+failures retain 30-second backoff. Missing/malformed/symlink hints cannot initiate
+fast polling. Private download verification and journal protection still precede
+completion. A scan can take up to five seconds to appear; after it is detected,
+queued uploads are picked up promptly, subject to network and verification time.
+
+Both processes must run on the same machine with the same identity path to share
+the local hint. Restart both Cloud Shell processes; no Cloud Run rebuild,
+deployment, migration, or credential changes are required.

@@ -11,6 +11,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+if __package__:
+    from .kiosk_activity import read_activity
+else:
+    from kiosk_activity import read_activity
+
 cloud_run_auth = False
 
 
@@ -115,7 +120,7 @@ def main():
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--customer-qr',type=Path,help='Write a short-lived customer QR to a private PNG file')
     parser.add_argument('--journal',type=Path,help='Private durable simulator journal, required for --jobs')
-    parser.add_argument('--jobs', action='store_true', help='Check for simulated jobs every second; heartbeats remain every 30 seconds')
+    parser.add_argument('--jobs', action='store_true', help='Check queued touchscreen jobs promptly; idle fallback and heartbeats every 30 seconds')
     args = parser.parse_args()
     cloud_run_auth = args.gcloud_auth
     if args.activate:
@@ -140,7 +145,8 @@ def main():
     while True:
         delay = 1 if args.jobs and args.status == 'ready' else 30
         try:
-            if time.monotonic() >= next_heartbeat:
+            heartbeat_due = time.monotonic() >= next_heartbeat
+            if heartbeat_due:
                 result = post(args.url, '/api/devices/heartbeat', {'printer_status':args.status, 'software_version':'sim-0.2'}, identity['device_token'])
                 print(f"Kiosk {result['kiosk_id']}: {result['status']}")
                 next_heartbeat = time.monotonic() + 30
@@ -152,7 +158,8 @@ def main():
                     qrcode.make(result['upload_url']).save(output,format='PNG')
                 print('Customer QR saved. It expires in three minutes; no URL or token was logged.')
                 args.customer_qr=None
-            if args.jobs and args.status == 'ready':
+            activity = read_activity(args.identity) if args.jobs else False
+            if args.jobs and args.status == 'ready' and (args.once or activity is True or (activity is None and heartbeat_due)):
                 simulate_job(args.url, identity['device_token'], journal, quiet=not args.once)
         except urllib.error.HTTPError as error:
             delay = 30

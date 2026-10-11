@@ -10,6 +10,7 @@ import urllib.error
 from flask import Flask, abort, jsonify, render_template, request, send_file
 import qrcode
 import kiosk_simulator as agent
+from kiosk_activity import publish_activity
 
 
 def create_terminal(identity_path, preview_host=None):
@@ -23,6 +24,7 @@ def create_terminal(identity_path, preview_host=None):
     nonce=secrets.token_urlsafe(32)
     state={}
     lock=threading.Lock()
+    publish_activity(path, 'idle')
 
     @app.before_request
     def protect_local_agent():
@@ -78,6 +80,7 @@ def create_terminal(identity_path, preview_host=None):
             if not result.get('session_id'):
                 return jsonify(error='Cloud service needs the kiosk-session status update before this UI can start.'),409
             state.update(session_id=result['session_id'],upload_url=result['upload_url'])
+            publish_activity(path, 'waiting_scan')
         return jsonify(state='waiting_scan',expires_in=result['expires_in'])
 
     @app.get('/qr.png')
@@ -95,8 +98,10 @@ def create_terminal(identity_path, preview_host=None):
             session_id=state.get('session_id')
         if not session_id:
             return jsonify(state='idle')
-        return jsonify(agent.post(base,'/api/devices/customer-sessions/status',
-            {'session_id':session_id},identity['device_token']))
+        result=agent.post(base,'/api/devices/customer-sessions/status',
+            {'session_id':session_id},identity['device_token'])
+        publish_activity(path, result['state'])
+        return jsonify(result)
 
     @app.post('/reset')
     def reset():
@@ -107,6 +112,7 @@ def create_terminal(identity_path, preview_host=None):
                 if result['state'] not in ('completed','cancelled','expired','needs_review'):
                     return jsonify(error='The session is still active. Wait for expiry or ask the operator.'),409
             state.clear()
+            publish_activity(path, 'idle')
         return jsonify(state='idle')
 
     @app.post('/cancel')
@@ -116,6 +122,7 @@ def create_terminal(identity_path, preview_host=None):
                 agent.post(base,'/api/devices/customer-sessions/cancel',
                     {'session_id':state['session_id']},identity['device_token'])
             state.clear()
+            publish_activity(path, 'idle')
         return jsonify(state='idle')
 
     return app
